@@ -1,0 +1,15 @@
+base
+knitr
+dplyr
+ggplot2
+gtable
+reshape2
+corrplot
+gganimate
+animation
+plotly
+lattice
+caret
+pander
+lubridate
+bindrcpp

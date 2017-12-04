@@ -1,0 +1,167 @@
+---
+title: "Raport z Analizy Danych"
+author: "Kacper Stêpieñ 117262"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 2
+    number_sections: true
+---
+
+# Wstêp
+
+Celem projektu by³o okreœlenie jakie czynniki najlepiej pozwalaj¹ przewidzieæ energiê wytwarzan¹ przez panele fotowoltaiczne na podstawie danych pochodz¹cych z trzech s¹siaduj¹cych elektrowni s³onecznych we W³oszech. Analizie podlega³ zbiór danych zawieraj¹cy pomiary z czujników umieszczonych przy panelach fotowoltaicznych. Na pocz¹tku nale¿a³o przyjrzeæ siê danym, nazwom ich kolumn i ich rozk³adom. Nastêpnie nale¿a³o zastanowiæ siê czy nie wystêpuj¹ warotœci puste a nastêpnie takie wartoœci wyczyœciæ. Nastêpnie mo¿naby³o przyst¹piæ do budowy regresora który móg³by pos³u¿yæ do przewidywania produkcji energii w zale¿noœci od innych czynnikóW. Przy wytypowaniu najwa¿niejszych atrybutów które wp³ywaj¹cych na wielkoœæ wytwarzanej energii wa¿ny okaza³ siê wykres korelacji atrybutóW. Naturalnymi kandydatami by³y atrybuty które mia³y dodatni¹ b¹dŸ ujemn¹ korelacjê z atrybutem *kwh*. Nastêpnie zosta³ stworzony regresor, i na podstawie wag atrybutów zosta³ wyznaczony najwa¿niejszy atrybut - nas³onecznienie.
+
+```{r libraries, include=FALSE}
+library(knitr) # provides a general-purpose tool for dynamic report generation.
+library(dplyr) # data manipulation tools for working with data frames.
+library(ggplot2) # powerful graphics language for creating elegant and complex plots.
+library(reshape2) # allows flexibly restructure and aggregate data using just two functions: melt and cast.
+library(corrplot) # used for displaying correlation matrix.
+library(plotly) # used for interactive plot 
+library(caret) # used for regression
+library(pander) # used for dinamic table
+```
+
+```{r recurrence, include=FALSE}
+set.seed(117262)
+```
+
+```{r load-data, include=FALSE}
+dataSet <- read.csv("elektrownie.csv", row.names=1)
+```
+
+# Wartoœci puste:
+
+Zbiór nie zbiór nie zawiera³ wartoœci *NA*, ale zawiera³ dwie sytuacje które mog¹ wskazywaæ na b³êdy b¹dŸ awarie czujników. 
+
+S¹ sytuacje, gdy wartosæ *kwh* jest równa zero. Taka sytuacja nie powinna zajœæ, gdy wartoœæ napromieniowania s³onecznego jest ró¿na od zero. W takiej sytuacji pdstawiamy zamiast wartoœci zero wartoœæ œredni¹. Mo¿naby tak¿e takie pomiary w ogóle wyrzucaæ ze zbrioru, ale utrata informacji by³aby zbyt du¿a.
+
+I vice versa, gdy zerowe *irradiamento*, nie powinno byæ *kwh*. W takiej sytuacji, gdy jest dodatnie *kwh* i zerowe *irradiamento*, podstawiamy podd *irradiamento* wartoœæ œredni¹.
+
+```{r na-values, include=FALSE}
+dataSet <- dataSet %>% mutate(kwh = ifelse(kwh == 0, mean(kwh), kwh))
+dataSet <- dataSet %>% mutate(irradiamento = ifelse(irradiamento == 0 & kwh > 0, mean(irradiamento), irradiamento))
+```
+
+# Podsumowanie
+
+Dane kolumny, które uda³o siê rozszyfrowaæ, oznaczaj¹:
+
+* idsito - id czujnika
+* idmodel - model czujnika
+* idbrand - firma czujnika
+* lat - szerkoœæ geograficzna
+* lon - d³ugoœæ geograficzna
+* ageinmonths - wiek czujnika w miesi¹cach
+* anno - rok pomiaru
+* ora - dzieñ pomiaru
+* data - data pomiaru
+* temperatura_ambiente - temperatura pokojowa
+* irradiamento - nas³onecznienie
+* pressure - ciœnienie powietrza
+* windspeed - Prêdkoœæ wiatru
+* humidity - Wilgotnoœæ powietrza
+* dewpoint - Punkt rosy
+* windbearing - Kierunek wiatru
+* cloudcover - Zaczmurzenie
+* altitude - Wysokoœæ
+* azimuth - Azymut
+* kwh - Poziom wytwarzanej energii
+
+```{r size-basic-statistics,echo=FALSE}
+knitr::kable(str(dataSet))
+pander::pander(summary.data.frame(dataSet))
+```
+
+# Analiza wartoœci atrybutów
+
+```{r attribute-distribution, cache=TRUE,echo=FALSE}
+
+for (colName in names(dataSet)) {
+  if (colName != "data") {
+    currCol <- dataSet[[colName]]
+    currColNoNA <- currCol[!is.na(currCol)]
+    currMean <- mean(currColNoNA)
+    currPlot <- ggplot(dataSet, aes(x = currCol)) + 
+    xlab(paste("count(", colName, ")")) +
+    ylab("density") +
+    geom_density(kernel = "gaussian", fill = "steelblue") + 
+    theme_minimal() +
+    geom_rug(sides="b", color="blue", size = 2, aes(x=currMean, y=0)) + 
+    geom_text(aes(label=round(currMean, 2), x=currMean, y=0), hjust=0.5, vjust=-1, color="blue")
+    print(currPlot)
+  }
+}
+
+```
+
+
+# Korelacja pomiêdzy atrybutami
+
+Wykres przedstawia korelacjê pomiêdzy atrybutami.
+
+```{r correlation,fig.width=20,fig.height=15, echo=FALSE}
+dataSetNumeric <- dataSet %>% select(-data)
+
+correlationMatrix <- cor(dataSetNumeric)
+
+corrplot(correlationMatrix, tl.cex = 1.5, tl.col = "black", sig.level = 0.05, insig = "blank", cl.pos = "b",tl.srt = 45,number.cex=2)
+```
+
+# Wytwarzanie energii w czasie i przestrzeni
+
+Wykres przedstawia sumaryczn¹ iloœæ wytwarzanej energii dla danej d³ugoœci i szerokoœci geograficznej w skali roku.
+
+```{r energy-time-space,plotly=TRUE}
+
+energyTimeSpace <- dataSet %>% group_by(lat,lon,anno) %>% summarise(kwh_sum = sum(kwh))
+
+p <- energyTimeSpace %>%
+  plot_ly(
+    x = ~lat,
+    y = ~lon,
+    size = ~kwh_sum,
+    color = ~kwh_sum,
+    frame = ~anno,
+    type = 'scatter',
+    mode = 'markers',
+    showlegend = T
+  )
+p
+
+```
+
+# Regresor
+
+Do regresora wybrane zosta³y kolumny które wykaza³y korelacjê (dodatni¹ b¹dŸ negatywn¹) z kolumn¹ kwh. Do trenowania i testowania regresora zosta³ wybrany sta³y podzia³ zbioru. Dane zosta³y podzielone w proporcjachL 0.6 = zbiór treningowy, 0.4 = zbiór treningowy. Wybrana zosta³a metoda regresji liniowej.
+
+```{r regression}
+modelDataSet <- dataSet %>% select(idsito,lat,lon,ora,azimuthi,humidity,temperatura_ambiente,tempi,cloudcover,irri_pvgis_mod,irr_pvgis_mod,irradiamento,kwh)
+split<-createDataPartition(y = modelDataSet$kwh, p = 0.6, list = FALSE)
+
+dev<-modelDataSet[split,]
+
+val<-modelDataSet[-split,]
+
+lmFit<-train(kwh~., data = dev, trControl=trainControl(method="cv", number=10), method = "lm")
+
+summary(lmFit)
+
+predictedVal<-predict(lmFit,val)
+
+modelvalues<-data.frame(obs = val$kwh, pred=predictedVal)
+
+defaultSummary(modelvalues)
+```
+
+# Analiza wa¿noœci atrybutów
+
+Z analizy wa¿noœci atrybutów wynika ¿e nazwa¿niejszym aktrybutem jest atrybut *irradiamento* - nas³onecznienie.
+
+```{r atrribute-importance}
+varImp(lmFit)
+
+plot(varImp(lmFit))
+```

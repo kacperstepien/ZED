@@ -1,0 +1,65 @@
+---
+title: "ZED04"
+author: "Kacper Stêpieñ 117262"
+date: "26 listopada 2017"
+output: html_document
+---
+
+```{r library, include=FALSE}
+library(EDAWR)
+library(ggplot2)
+library(dplyr)
+```
+
+```{r cache, include=FALSE, cache=TRUE}
+my_tb <- tb
+```
+
+## Krótkie podsumowanie danych w zbiorze
+```{r summary, echo=FALSE}
+knitr::kable(summary(my_tb))
+```
+
+## Liczba zachorowañ z podzia³em na p³eæ
+
+```{r sex, echo=FALSE,warning=FALSE}
+histData <- my_tb %>% mutate(count=child+adult+elderly) %>% group_by(sex) %>% summarize(sum_by_sex=sum(count, na.rm=TRUE))
+
+ggplot(data=histData, aes(x=sex,y=sum_by_sex,fill=sex))+geom_histogram(stat='identity')+
+  ylab("sum")
+```
+
+## Sumaryczna liczba zachorowañ wœród dzieci, doros³ych i osób starszych w kolejnych latach
+```{r year, echo=FALSE}
+my_tb_by_year<-my_tb %>% 
+  group_by(year) %>% 
+  summarise(child_by_year=sum(child,na.rm=TRUE),
+            adult_by_year=sum(adult,na.rm=TRUE),
+            elderly_by_year=sum(elderly,na.rm=TRUE))
+
+ggplot(data=my_tb_by_year, aes(x=year))+
+  geom_line(aes(y=child_by_year,color="child")) + 
+  geom_line(aes(y=adult_by_year,color="adult")) + 
+  geom_line(aes(y=elderly_by_year,color="erlderly"))+
+  ylab("sum")
+```
+
+## Sumaryczna liczba zachorowañ wœród dzieci, doros³ych i osób starszych w kolejnych latach z podzia³em na kraje
+```{r countries, echo=FALSE,fig.width=30, fig.height=70}
+my_tb_by_year_country<-my_tb %>% 
+  group_by(year,country) %>% 
+  summarise(child_by_year_country=sum(child, na.rm=TRUE),
+            adult_by_year_country=sum(adult, na.rm=TRUE),
+            elderly_by_year_country=sum(elderly,na.rm=TRUE))
+
+ggplot(data=my_tb_by_year_country, aes(x=year))+
+  geom_line(aes(y=child_by_year_country,color="child"),size=2.5) + 
+  geom_line(aes(y=adult_by_year_country,color="adult"),size=2.5) + 
+  geom_line(aes(y=elderly_by_year_country,color="erlderly"),size=2.5)+
+  facet_wrap(~country,ncol=6)+
+  ylab("sum")+
+  theme(strip.text.x = element_text(size=25),
+        axis.title=element_text(size=25),
+        axis.text=element_text(size=25),
+        legend.text=element_text(size=25))
+```
